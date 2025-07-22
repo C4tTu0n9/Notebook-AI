@@ -106,7 +106,7 @@ namespace Synapse_API.Data
                 .HasOne(e => e.Course)
                 .WithMany(c => c.Events)
                 .HasForeignKey(e => e.CourseID)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Event>()
                 .HasOne(e => e.ParentEvent)

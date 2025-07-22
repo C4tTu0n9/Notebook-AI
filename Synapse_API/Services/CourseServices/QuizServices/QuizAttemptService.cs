@@ -3,7 +3,8 @@ using Synapse_API.Models.Dto.QuizDTOs;
 using Synapse_API.Models.Entities;
 using Synapse_API.Repositories.Course.Quiz;
 using Synapse_API.Services.DatabaseServices;
-
+using Microsoft.Extensions.Options;
+using Synapse_API.Configuration_Services;
 namespace Synapse_API.Services.CourseServices.QuizServices
 {
     public class QuizAttemptService
@@ -14,6 +15,7 @@ namespace Synapse_API.Services.CourseServices.QuizServices
         private readonly IMapper _mapper;
         private readonly RedisService _redisService;
         private readonly PerformanceMetricService _performanceMetricService;
+        private readonly IOptions<ApplicationSettings> _appSettings;
 
         public QuizAttemptService(
             UserQuizAttemptRepository attemptRepository,
@@ -21,7 +23,8 @@ namespace Synapse_API.Services.CourseServices.QuizServices
             QuizRepository quizRepository,
             IMapper mapper,
             RedisService redisService,
-            PerformanceMetricService performanceMetricService)
+            PerformanceMetricService performanceMetricService,
+            IOptions<ApplicationSettings> appSettings)
         {
             _attemptRepository = attemptRepository;
             _answerRepository = answerRepository;
@@ -29,6 +32,7 @@ namespace Synapse_API.Services.CourseServices.QuizServices
             _mapper = mapper;
             _redisService = redisService;
             _performanceMetricService = performanceMetricService;
+            _appSettings = appSettings;
         }
 
         /// <summary>
@@ -66,7 +70,7 @@ namespace Synapse_API.Services.CourseServices.QuizServices
                 // Tìm đáp án đúng
                 var correctOption = question.Options.FirstOrDefault(o => o.IsCorrect);
                 var isCorrect = correctOption?.OptionKey == userAnswer.SelectedOption;
-                
+
                 if (isCorrect) correctCount++;
 
                 // Tạo UserAnswer entity
@@ -98,9 +102,7 @@ namespace Synapse_API.Services.CourseServices.QuizServices
             await _answerRepository.CreateMultipleAnswersAsync(userAnswers);
 
             // 5. Tính điểm số (thang điểm 10)
-            decimal score = quiz.Questions.Count > 0 
-                ? Math.Round((decimal)correctCount / quiz.Questions.Count * 10, 2)
-                : 0;
+            decimal score = CalculateScore(correctCount, quiz.Questions.Count);
 
             // 6. Tạo feedback
             string feedback = GenerateFeedback(correctCount, quiz.Questions.Count, score);
@@ -185,21 +187,24 @@ namespace Synapse_API.Services.CourseServices.QuizServices
         /// <summary>
         /// Tạo feedback dựa trên kết quả
         /// </summary>
-        private string GenerateFeedback(int correctCount, int totalQuestions, decimal score)
+        private string GenerateFeedback(int correctCount, int totalQuestions, decimal score, string lang = "vi")
         {
-            if (score >= 9)
-                return $"Xuất sắc! Bạn đã trả lời đúng {correctCount}/{totalQuestions} câu. Điểm số: {score}/10";
-            else if (score >= 8)
-                return $"Rất tốt! Bạn đã trả lời đúng {correctCount}/{totalQuestions} câu. Điểm số: {score}/10";
-            else if (score >= 7)
-                return $"Tốt! Bạn đã trả lời đúng {correctCount}/{totalQuestions} câu. Điểm số: {score}/10";
-            else if (score >= 6)
-                return $"Khá! Bạn đã trả lời đúng {correctCount}/{totalQuestions} câu. Điểm số: {score}/10. Hãy ôn tập thêm!";
-            else if (score >= 5)
-                return $"Trung bình! Bạn đã trả lời đúng {correctCount}/{totalQuestions} câu. Điểm số: {score}/10. Cần cải thiện thêm!";
-            else
-                return $"Cần cố gắng hơn! Bạn đã trả lời đúng {correctCount}/{totalQuestions} câu. Điểm số: {score}/10. Hãy học kỹ lại kiến thức!";
+            var thresholds = _appSettings.Value.Quiz.FeedbackThresholds;
+            var messages = _appSettings.Value.Quiz.FeedbackMessages;
+
+            string label = thresholds
+                .OrderByDescending(t => t.Value)
+                .FirstOrDefault(t => score >= t.Value).Key ?? "BelowAverage";
+
+            var langMessages = messages[lang];
+            var template = langMessages[label];
+
+            return template
+                .Replace("{correct}", correctCount.ToString())
+                .Replace("{total}", totalQuestions.ToString())
+                .Replace("{score}", score.ToString($"F{_appSettings.Value.Quiz.ScoreDecimalPlaces}"));
         }
+
 
         public async Task<List<QuizAttemptResponseDto>> GetQuizResultByQuizID(int quizID)
         {
@@ -212,8 +217,16 @@ namespace Synapse_API.Services.CourseServices.QuizServices
                 Score = a.Score ?? 0,
                 AttemptDate = a.AttemptDate,
                 Feedback = a.Feedback,
-                QuestionResults = new List<QuestionResultDto>() 
+                QuestionResults = new List<QuestionResultDto>()
             }).ToList();
         }
+
+        private decimal CalculateScore(int correctCount, int totalQuestions)
+        {
+            if (totalQuestions == 0) return 0;
+
+            var score = (decimal)correctCount / totalQuestions * _appSettings.Value.Quiz.MaxScore;
+            return Math.Round(score, _appSettings.Value.Quiz.ScoreDecimalPlaces);
+        }
     }
-} 
+}

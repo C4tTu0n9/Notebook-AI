@@ -16,7 +16,7 @@ builder.Services.AddSwaggerGen();
 // Thêm dịch vụ DbContext
 DbConfg.AddDbContext(builder.Services, builder.Configuration);
 // Thêm CORS policy
-CorsConfg.AddCors(builder.Services);
+CorsConfg.AddCors(builder.Services, builder.Configuration);
 //GEMINI
 GeminiConfg.AddGemini(builder.Services, builder.Configuration);
 //GoogleAI
@@ -42,7 +42,10 @@ builder.Services.AddAuthentication()
     options.ClientSecret = builder.Configuration.GetSection("GoogleKeys:ClientSecret").Value;
     options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme; // Quan trọng: chỉ định scheme cho OAuth
 });
-
+//Configuration ApplicationSettings
+builder.Services.Configure<ApplicationSettings>(
+    builder.Configuration.GetSection("ApplicationSettings"));
+//QuestPDF
 QuestPDF.Settings.License = LicenseType.Community;
 
 var app = builder.Build();

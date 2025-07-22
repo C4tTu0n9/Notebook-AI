@@ -5,6 +5,9 @@ using Synapse_API.Models.Entities;
 using Synapse_API.Models.Enums;
 using Synapse_API.Repositories.Profile;
 using Synapse_API.Repositories.Course;
+using Microsoft.Extensions.Options;
+using Synapse_API.Configuration_Services;
+
 namespace Synapse_API.Services.EventServices
 {
     public class EventService
@@ -15,8 +18,9 @@ namespace Synapse_API.Services.EventServices
         private readonly CourseRepository _courseRepository;
         private readonly TopicRepository _topicRepository;
         private readonly EventReminderService _reminderService;
+        private readonly IOptions<ApplicationSettings> _appSettings;
 
-        public EventService(EventRepository eventRepository, IMapper mapper, UserProfileRepository userProfileRepository, CourseRepository courseRepository, TopicRepository topicRepository, EventReminderService reminderService)
+        public EventService(EventRepository eventRepository, IMapper mapper, UserProfileRepository userProfileRepository, CourseRepository courseRepository, TopicRepository topicRepository, EventReminderService reminderService, IOptions<ApplicationSettings> appSettings)
         {
             _eventRepository = eventRepository;
             _mapper = mapper;
@@ -24,6 +28,7 @@ namespace Synapse_API.Services.EventServices
             _courseRepository = courseRepository;
             _topicRepository = topicRepository;
             _reminderService = reminderService;
+            _appSettings = appSettings;
         }
 
         public async Task<EventDto> GetEventById(int id)
@@ -105,78 +110,87 @@ namespace Synapse_API.Services.EventServices
         // Method mới để tạo lịch trình ôn thi tự động
         public async Task<List<StudySessionDto>> GenerateStudyPlan(GenerateStudyPlanDto generateDto)
         {
-            // 1. Lấy thông tin exam event
-            var examEvent = await _eventRepository.GetEventById(generateDto.ExamEventID);
+            // exam event
+            var examEvent = await GetExamEventOrThrow(generateDto.ExamEventID);
+
+            // user profile
+            var userProfile = await GetUserProfileOrThrow(generateDto.UserID);
+
+            // course
+            var course = await GetCourseOrThrow(generateDto.CourseID);
+
+            // delete study sessions cu
+            await _eventRepository.DeleteStudySessionsByParentEvent(generateDto.ExamEventID);
+
+            // Gen sub event
+            var (studySessions, studySessionDtos) = await GenerateStudySessions(
+                generateDto, examEvent, userProfile, course);
+
+            var createdEvents = await _eventRepository.CreateMultipleEvents(studySessions);
+
+            return studySessionDtos;
+        }
+
+        private async Task<Event> GetExamEventOrThrow(int examEventId)
+        {
+            var examEvent = await _eventRepository.GetEventById(examEventId);
             if (examEvent == null || examEvent.EventType != EventType.Exam)
             {
                 throw new Exception("Event không tồn tại hoặc không phải là EXAM-Typed");
             }
+            return examEvent;
+        }
 
-            // 2. Lấy thông tin user profile để biết thời gian rảnh
-            var userProfile = await _userProfileRepository.GetUserProfileByUserId(generateDto.UserID);
-            
+        private async Task<UserProfile> GetUserProfileOrThrow(int userId)
+        {
+            var userProfile = await _userProfileRepository.GetUserProfileByUserId(userId);
             if (userProfile == null)
             {
                 throw new Exception("Không tìm thấy thông tin user profile");
             }
+            return userProfile;
+        }
 
-            // 3. Lấy thông tin course và topics
-            var course = await _courseRepository.GetCourseById(generateDto.CourseID);
-            
+        private async Task<Course> GetCourseOrThrow(int courseId)
+        {
+            var course = await _courseRepository.GetCourseById(courseId);
             if (course == null)
             {
                 throw new Exception("Không tìm thấy thông tin môn học");
             }
+            return course;
+        }
 
-            // 4. Xóa các study sessions cũ nếu có
-            await _eventRepository.DeleteStudySessionsByParentEvent(generateDto.ExamEventID);
-
-            // 5. Tính toán và tạo lịch trình ôn thi
+        private async Task<(List<Event> studySessions, List<StudySessionDto> studySessionDtos)> GenerateStudySessions(
+            GenerateStudyPlanDto generateDto, Event examEvent, UserProfile userProfile, Course course)
+        {
             var studySessions = new List<Event>();
             var studySessionDtos = new List<StudySessionDto>();
-            
-            var daysBeforeExam = generateDto.DaysBeforeExam ?? 7;
+
+            var daysBeforeExam = generateDto.DaysBeforeExam ?? _appSettings.Value.StudyPlan.DefaultDaysBeforeExam;
             var startDate = generateDto.ExamDate.AddDays(-daysBeforeExam);
             var topics = course.Topics.ToList();
             var topicsPerDay = Math.Max(1, topics.Count / daysBeforeExam);
-            
-            // Lấy thời gian học mỗi ngày từ user profile (mặc định 2 giờ)
-            var dailyStudyHours = userProfile.DailyStudyHours ?? 2;
-            var preferredTime = userProfile.PreferredStudyTime ?? "Evening";
-            
+
+            // Lấy thời gian học mỗi ngày từ user profile
+            var dailyStudyHours = userProfile.DailyStudyHours ?? _appSettings.Value.StudyPlan.DefaultDailyStudyHours;
+            var preferredTime = userProfile.PreferredStudyTime ?? _appSettings.Value.StudyPlan.DefaultPreferredTime;
             var topicIndex = 0;
+
             for (int day = 0; day < daysBeforeExam && topicIndex < topics.Count; day++)
             {
                 var studyDate = startDate.AddDays(day);
-                
-                // Xác định giờ học dựa trên preference
-                var startHour = preferredTime switch
-                {
-                    "Morning" => 8,
-                    "Afternoon" => 14,
-                    "Evening" => 19,
-                    _ => 19
-                };
+                var startHour = _appSettings.Value.StudyPlan.StudyTimeHours[preferredTime];
 
                 // Kiểm tra xem có event nào khác trong ngày không
                 var existingEvents = await _eventRepository.GetEventsByUserAndDateRange(
-                    generateDto.UserID, 
-                    studyDate.Date, 
+                    generateDto.UserID,
+                    studyDate.Date,
                     studyDate.Date.AddDays(1)
                 );
 
                 // Điều chỉnh giờ học nếu có xung đột
-                while (existingEvents.Any(e => 
-                    e.StartTime.Hour <= startHour + dailyStudyHours && 
-                    e.EndTime.Hour >= startHour))
-                {
-                    startHour += 2;
-                    if (startHour >= 22) // Nếu quá muộn thì chuyển sang buổi sáng
-                    {
-                        startHour = 6;
-                        break;
-                    }
-                }
+                startHour = AdjustStudyStartHour(existingEvents, startHour, dailyStudyHours);
 
                 // Tạo study session cho ngày này
                 var topicsForToday = new List<Topic>();
@@ -191,82 +205,69 @@ namespace Synapse_API.Services.EventServices
 
                 foreach (var topic in topicsForToday)
                 {
-                    var studySession = new Event
-                    {
-                        UserID = generateDto.UserID,
-                        CourseID = generateDto.CourseID,
-                        ParentEventID = generateDto.ExamEventID,
-                        EventType = EventType.StudySession,
-                        Title = $"Practice {topic.TopicName}",
-                        Description = $"Practice {topic.TopicName} for exam {examEvent.Title}. " +
-                                    $"Content: {topic.Description ?? ""}",
-                        StartTime = currentStartTime,
-                        EndTime = currentStartTime.AddHours(hoursPerTopic),
-                        Priority = 1, // Mức độ ưu tiên trung bình
-                        IsCompleted = false
-                    };
-
+                    var studySession = CreateStudySession(generateDto, examEvent, topic, currentStartTime, hoursPerTopic);
                     studySessions.Add(studySession);
-                    
+
                     // Tạo DTO để trả về
-                    var sessionDto = new StudySessionDto
-                    {
-                        Title = studySession.Title,
-                        Description = studySession.Description,
-                        StartTime = studySession.StartTime,
-                        EndTime = studySession.EndTime,
-                        TopicID = topic.TopicID,
-                        TopicName = topic.TopicName,
-                        EstimatedDuration = (int)(hoursPerTopic * 60), // chuyển sang phút
-                        DayNumber = day + 1
-                    };
-                    
+                    var sessionDto = CreateStudySessionDto(studySession, topic, hoursPerTopic, day + 1);
                     studySessionDtos.Add(sessionDto);
+
                     currentStartTime = currentStartTime.AddHours(hoursPerTopic);
                 }
             }
 
-            // 6. Lưu các study sessions vào database
-            var createdEvents = await _eventRepository.CreateMultipleEvents(studySessions);
-            
-            // Update EventID cho DTOs
-            for (int i = 0; i < studySessionDtos.Count && i < createdEvents.Count(); i++)
-            {
-                studySessionDtos[i].EventID = createdEvents.ElementAt(i).EventID;
-            }
-
-            return studySessionDtos;
+            return (studySessions, studySessionDtos);
         }
 
-        // Method để lấy lịch trình ôn thi của một exam
-        public async Task<IEnumerable<StudySessionDto>> GetStudyPlanByExamId(int examId)
+        private int AdjustStudyStartHour(IEnumerable<Event> existingEvents, int startHour, int dailyStudyHours)
         {
-            var studySessions = await _eventRepository.GetStudySessionsByParentEvent(examId);
-            
-            var result = new List<StudySessionDto>();
-            foreach (var session in studySessions)
+            while (existingEvents.Any(e =>
+                e.StartTime.Hour <= startHour + dailyStudyHours &&
+                e.EndTime.Hour >= startHour))
             {
-                // Lấy thông tin topic nếu có
-                var topic = session.CourseID.HasValue ? 
-                    await _topicRepository.GetTopicById(session.CourseID) : null;
-                
-                var dto = new StudySessionDto
+                startHour += 2;
+                if (startHour >= _appSettings.Value.StudyPlan.MaxScheduleConflictHour)
                 {
-                    EventID = session.EventID,
-                    Title = session.Title,
-                    Description = session.Description,
-                    StartTime = session.StartTime,
-                    EndTime = session.EndTime,
-                    TopicID = topic?.TopicID ?? 0,
-                    TopicName = topic?.TopicName ?? "",
-                    EstimatedDuration = (int)(session.EndTime - session.StartTime).TotalMinutes,
-                    DayNumber = (session.StartTime.Date - studySessions.Min(s => s.StartTime.Date)).Days + 1
-                };
-                
-                result.Add(dto);
+                    startHour = _appSettings.Value.StudyPlan.MinScheduleStartHour;
+                    break;
+                }
             }
-            
-            return result.OrderBy(r => r.StartTime);
+            return startHour;
         }
+
+        private Event CreateStudySession(
+            GenerateStudyPlanDto generateDto, Event examEvent, Topic topic, DateTime currentStartTime, double hoursPerTopic)
+        {
+            return new Event
+            {
+                UserID = generateDto.UserID,
+                CourseID = generateDto.CourseID,
+                ParentEventID = generateDto.ExamEventID,
+                EventType = EventType.StudySession,
+                Title = $"Practice {topic.TopicName}",
+                Description = $"Practice {topic.TopicName} for exam {examEvent.Title}. " +
+                              $"Content: {topic.Description ?? ""}",
+                StartTime = currentStartTime,
+                EndTime = currentStartTime.AddHours(hoursPerTopic),
+                IsCompleted = false
+            };
+        }
+
+        private StudySessionDto CreateStudySessionDto(
+            Event studySession, Topic topic, double hoursPerTopic, int dayNumber)
+        {
+            return new StudySessionDto
+            {
+                Title = studySession.Title,
+                Description = studySession.Description,
+                StartTime = studySession.StartTime,
+                EndTime = studySession.EndTime,
+                TopicID = topic.TopicID,
+                TopicName = topic.TopicName,
+                EstimatedDuration = (int)(hoursPerTopic * 60), // minutes
+                DayNumber = dayNumber
+            };
+        }
+
     }
 }

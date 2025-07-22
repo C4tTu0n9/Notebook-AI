@@ -2,13 +2,14 @@
 {
     public class CorsConfg
     {
-        public static void AddCors(IServiceCollection services)
+        public static void AddCors(IServiceCollection services, IConfiguration configuration)
         {
+            var allowedOrigins = configuration.GetSection("FrontendUrls:AllowedOrigins").Get<string[]>();
             services.AddCors(options =>
             {
                 options.AddPolicy("AllowReactApp", policy =>
                 {
-                    policy.WithOrigins("https://localhost:7777")
+                    policy.WithOrigins(allowedOrigins)
                           .AllowAnyHeader()
                           .AllowAnyMethod();
                 });

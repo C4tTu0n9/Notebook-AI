@@ -28,10 +28,10 @@ namespace Synapse_API.Services.CourseServices.QuizServices
             return _mapper.Map<QuestionDto>(questionNew);
         }
 
-        public async Task<QuestionDto> CreateQuestionFromAI(QuestionGenerationResponse questionGenerationResponse)
+        public async Task<QuestionDto> CreateQuestionFromAI(QuestionGenerationResponse questionGenerationResponse, int quizId)
         {
             var questionEntity = _mapper.Map<Models.Entities.Question>(questionGenerationResponse);
-            questionEntity.QuizID = 1;
+            questionEntity.QuizID = quizId;
             var questionNew = await _questionRepository.CreateQuestion(questionEntity);
             return _mapper.Map<QuestionDto>(questionNew);
         }

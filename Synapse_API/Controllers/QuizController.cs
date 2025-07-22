@@ -100,6 +100,7 @@ namespace Synapse_API.Controllers
 
         [HttpPost("generate-a-question")]
         public async Task<IActionResult> GenerateAQuestion(
+            int quizID,
             [FromQuery] string documentS3Url,
             [FromQuery] string promptInstruction = "")
         {
@@ -109,7 +110,7 @@ namespace Synapse_API.Controllers
                 mimeType: MimeTypeHelper.GetMimeType(documentS3Url),
                 promptInstruction
             );
-            await _questionService.CreateQuestionFromAI(result);
+            await _questionService.CreateQuestionFromAI(result, quizID);
 
             if (result == null)
                 return BadRequest("Failed to generate quiz");

@@ -46,7 +46,7 @@ namespace Synapse_API.Controllers
         {
             int userId = _userService.GetMyUserId(User);
             var events = await _eventService.GetEventsByStudentId(userId);
-            
+
             if (!events.Any())
             {
                 return NotFound($"No events found for student with ID {userId}.");
@@ -59,7 +59,7 @@ namespace Synapse_API.Controllers
         {
             int userId = _userService.GetMyUserId(User);
             var events = await _eventService.GetParentEventsByStudentId(userId);
-            
+
             if (!events.Any())
             {
                 return NotFound($"No parent events found for student with ID {userId}.");
@@ -131,54 +131,13 @@ namespace Synapse_API.Controllers
                 int userId = _userService.GetMyUserId(User);
                 generateDto.UserID = userId;
                 var studySessions = await _eventService.GenerateStudyPlan(generateDto);
-                return Ok(new
-                {
-                    success = true,
-                    message = $"Đã tạo thành công {studySessions.Count} buổi ôn tập",
-                    data = studySessions
-                });
+                return Ok(studySessions);
             }
             catch (Exception ex)
             {
-                return BadRequest(new
-                {
-                    success = false,
-                    message = ex.Message
-                });
+                return BadRequest(ex.Message);
             }
         }
 
-        // Get lịch trình ôn thi đã tạo cho một kỳ thi
-        [Authorize(Roles = "Student")]
-        [HttpGet("study-plan/exam/{examId}")]
-        public async Task<ActionResult<IEnumerable<StudySessionDto>>> GetStudyPlanByExamId(int examId)
-        {
-            try
-            {
-                var studySessions = await _eventService.GetStudyPlanByExamId(examId);
-                if (!studySessions.Any())
-                {
-                    return NotFound(new
-                    {
-                        success = false,
-                        message = "Chưa có lịch trình ôn thi nào được tạo cho kỳ thi này"
-                    });
-                }
-
-                return Ok(new
-                {
-                    success = true,
-                    data = studySessions
-                });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new
-                {
-                    success = false,
-                    message = ex.Message
-                });
-            }
-        }
     }
 }

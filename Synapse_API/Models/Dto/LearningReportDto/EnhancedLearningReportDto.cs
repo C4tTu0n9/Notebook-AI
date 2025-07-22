@@ -10,7 +10,6 @@ namespace Synapse_API.Models.Dto.LearningReportDto
         public string TopicName { get; set; }          
         public int Month { get; set; }
         public int Year { get; set; }
-        public GoalDto Goal { get; set; }
         public PerformanceDto Performance { get; set; }
         public List<AttemptDto> Attempts { get; set; }
 

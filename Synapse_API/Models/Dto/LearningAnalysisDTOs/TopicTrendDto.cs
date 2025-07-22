@@ -4,9 +4,9 @@
     {
         public int TopicId { get; set; }
         public string TopicName { get; set; } = string.Empty;
-        public double AverageCorrectRate { get; set; }
-        public double AverageStudyTime { get; set; }
-        public double AverageTrendScore { get; set; }
+        public double CorrectRate { get; set; }
+        public double StudyTime { get; set; }
+        public double TrendScore { get; set; }
         public string Insight { get; set; } = string.Empty;
     }
 }

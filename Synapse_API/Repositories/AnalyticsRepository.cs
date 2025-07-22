@@ -44,108 +44,48 @@ namespace Synapse_API.Repositories
                                  .ToListAsync();
         }
 
-        public async Task<List<UserQuizAttempt>> GetAllUserQuizAttemptsByUserIdAsync(int userId, int month, int year)
+        public async Task<List<UserQuizAttemptDto>> GetAllUserQuizAttemptsByUserIdAsync(int userId, int topicId, int month, int year)
         {
+            // Lấy tất cả các UserQuizAttempts theo userId
             return await _context.UserQuizAttempts
-                    .Include(m => m.Quiz)
-                    .ThenInclude(q => q.Topic) // Load cả thông tin Topic
-                    .Where(m => m.UserID == userId &&
-                               m.AttemptDate.Month == month &&
-                               m.AttemptDate.Year == year)
-                    .ToListAsync();
-        }
-
-
-
-        public async Task<List<PerformanceMetric>> GetWeakTopicsByUserIdAsync(int userId)
-        {
-            return await _context.PerformanceMetrics
-                .Where(m => m.UserID == userId)
-                .Include(m => m.Topic)
-                    .ThenInclude(t => t.Course)
-                .ToListAsync();
-        }
-
-
-        public async Task<List<object>> GetLearningTrendsGroupedAsync(int userId)
-        {
-            var metrics = await _context.PerformanceMetrics
-                .Include(m => m.Topic)
-                .Where(m => m.UserID == userId)
-                .ToListAsync();
-
-            var result = metrics
-                .GroupBy(m => new { m.TopicID, m.Topic.TopicName })
-                .Select(g => new
+                .Include(a => a.Quiz)
+                .ThenInclude(q => q.Topic)
+                .Where(a => a.UserID == userId &&
+                            a.AttemptDate.Month == month &&
+                            a.AttemptDate.Year == year &&
+                            a.Quiz.TopicID == topicId)
+                .OrderBy(a => a.AttemptDate)
+                .Select(a => new UserQuizAttemptDto
                 {
-                    TopicId = g.Key.TopicID,
-                    TopicName = g.Key.TopicName,
-                    Trends = g.GroupBy(x => new { x.LastUpdated.Year, x.LastUpdated.Month })
-                        .Select(t => new
-                        {
-                            Year = t.Key.Year,
-                            Month = t.Key.Month,
-                            AverageTime = Math.Round(t.Average(m => m.AverageTime ?? 0), 2),
-                            AverageCorrectRate = Math.Round(t.Average(m => m.CorrectRate ?? 0), 2),
-                            AverageTrendScore = Math.Round(t.Average(m => m.TrendScore ?? 0), 2),
-                            RecordCount = t.Count()
-                        })
-                        .OrderBy(t => t.Year)
-                        .ThenBy(t => t.Month)
-                        .ToList()
+                    AttemptID = a.AttemptID,
+                    QuizID = a.QuizID,
+                    QuizTitle = a.Quiz.QuizTitle,
+                    Score = (double)a.Score,
+                    AttemptDate = a.AttemptDate,
+                    Feedback = a.Feedback
                 })
-                .ToList<object>();
-
-            return result;
+                .ToListAsync();
         }
 
-
-        public async Task<List<PerformanceMetric>> GetMetricsByUserAndMonthAsync(int userId, int month, int year)
+        public async Task<List<WeakTopicDto>> GetWeakTopicsByUserIdAsync(int userId)
         {
+            // Lấy tất cả các PerformanceMetrics theo userId
             return await _context.PerformanceMetrics
-                .Where(m => m.UserID == userId &&
-                            m.LastUpdated.Month == month &&
-                            m.LastUpdated.Year == year)
+                .Where(m => m.UserID == userId && m.CorrectRate < 50)
                 .Include(m => m.Topic)
                     .ThenInclude(t => t.Course)
+                .Select(m => new WeakTopicDto
+                {
+                    TopicName = m.Topic.TopicName,
+                    CourseName =m.Topic.Course.CourseName,
+                    CorrectRate = (double)m.CorrectRate,
+                })
                 .ToListAsync();
         }
-
-        public async Task<List<Goal>> GetGoalsByUserAsync(int userId, int month, int year)
-        {
-            return await _context.Goals
-                .Where(g => g.UserID == userId
-                        && g.TargetDate.Value.Month == month
-                        && g.TargetDate.Value.Year == year)
-                .ToListAsync();
-        }
-        public async Task<List<Goal>> GetGoalsByUserIdAsync(int userId)
-        {
-            return await _context.Goals
-                .Where(g => g.UserID == userId)
-                .Include(g => g.Topic)
-                .ToListAsync();
-        }
-
-
-        public async Task<List<PerformanceMetric>> GetPerformanceMetricsByUserAsync(int userId)
-        {
-            return await _context.PerformanceMetrics
-                .Where(m => m.UserID == userId)
-                .Include(m => m.Topic)
-                .ToListAsync();
-        }
-
-        public async Task<string> GetUserNameByIdAsync(int userId)
-        {
-            var user = await _context.Users.FindAsync(userId);
-            return user?.FullName ?? $"User {userId}";
-        }
-
-
 
         public async Task<List<TopicTrendDto>> GetLearningTrendsByTopicAsync(int userId)
         {
+            // Lấy tất cả các PerformanceMetrics theo userId
             var metrics = await _context.PerformanceMetrics
                    .Include(m => m.Topic)
                    .Where(m => m.UserID == userId)
@@ -153,72 +93,32 @@ namespace Synapse_API.Repositories
 
             var result = new List<TopicTrendDto>();
 
-            var grouped = metrics.GroupBy(m => new { m.Topic.TopicID, m.Topic.TopicName });
-
-            foreach (var group in grouped)
+            foreach (var metric in metrics)
             {
-                var avgCorrect = group.Average(m => m.CorrectRate ?? 0);
-                var avgTime = group.Average(m => m.AverageTime ?? 0);
-                var avgTrend = group.Average(m => m.TrendScore ?? 0);
-
                 string insight = "";
 
-                if (avgTrend >= 8 && avgCorrect >= 80)
-                    insight = $"Đang cải thiện tốt môn {group.Key.TopicName} 🎯";
-                else if (avgTrend < 6 || avgCorrect < 60)
-                    insight = $"Hiệu suất môn {group.Key.TopicName} đang giảm, nên ôn tập thêm ⚠️";
+                if (metric.TrendScore >= 8 && metric.CorrectRate >= 80)
+                    insight = $"Đang cải thiện tốt môn {metric.Topic.TopicName} 🎯";
+                else if (metric.TrendScore < 6 || metric.CorrectRate < 60)
+                    insight = $"Hiệu suất môn {metric.Topic.TopicName} đang giảm, nên ôn tập thêm ⚠️";
                 else
-                    insight = $"Hiệu suất môn {group.Key.TopicName} ổn định.";
+                    insight = $"Hiệu suất môn {metric.Topic.TopicName} ổn định.";
 
                 result.Add(new TopicTrendDto
                 {
-                    TopicId = group.Key.TopicID,
-                    TopicName = group.Key.TopicName,
-                    AverageCorrectRate = Math.Round((double)avgCorrect, 2),
-                    AverageStudyTime = Math.Round((double)avgTime, 2),
-                    AverageTrendScore = Math.Round((double)avgTrend, 2),
+                    TopicId = metric.TopicID,
+                    TopicName = metric.Topic.TopicName,
+                    CorrectRate = (double)metric.CorrectRate,
+                    TrendScore = (double)metric.TrendScore,
                     Insight = insight
                 });
             }
-
             return result;
         }
 
-
-        public async Task<List<LearningActivity>> GetLearningActivitiesAsync(int userId, int month, int year)
-        {
-            var query = _context.LearningActivities
-                .Where(a => a.UserID == userId);
-
-            if (month > 0 && year > 0)
-            {
-                query = query.Where(a => a.StartTime.Month == month && a.StartTime.Year == year);
-            }
-
-            return await query
-                .OrderBy(a => a.StartTime)
-                .ToListAsync();
-        }
-
-
-        public async Task<StudentInfoDto> GetUserDetailsByIdAsync(int userId)
-        {
-            return await _context.Users
-                .Where(u => u.UserID == userId)
-                .Select(u => new StudentInfoDto
-                {
-                    StudentId = u.UserID,
-                    Name = u.FullName,
-                    Email = u.Email
-                })
-                .FirstOrDefaultAsync();
-        }
-
-
-
-
         public async Task<List<EnhancedLearningReportDto>> GenerateEnhancedLearningReportAsync(int userId, int month, int year)
         {
+            // Lấy danh sách các Topic mà học sinh đã làm quiz
             var topicIds = await _context.UserQuizAttempts
                 .Where(a => a.UserID == userId &&
                             a.AttemptDate.Month == month &&
@@ -243,7 +143,7 @@ namespace Synapse_API.Repositories
                     .Select(t => t.TopicName)
                     .FirstOrDefaultAsync();
 
-                // Lấy các attempt
+                // Lấy các lần làm quiz theo chủ đề đó trong tháng & năm
                 var attempts = await _context.UserQuizAttempts
                     .Where(a => a.UserID == userId &&
                                 a.AttemptDate.Month == month &&
@@ -263,21 +163,11 @@ namespace Synapse_API.Repositories
                 if (!attempts.Any())
                     continue;
 
+                // Tính điểm trung bình và điểm cao nhất
                 var avgScore = attempts.Average(a => a.Score);
                 var highScore = attempts.Max(a => a.Score);
 
-                var goal = await _context.Goals
-                    .Where(g => g.UserID == userId &&
-                                g.TopicID == topicId &&
-                                g.TargetDate.Value.Month == month &&
-                                g.TargetDate.Value.Year == year)
-                    .Select(g => new GoalDto
-                    {
-                        TargetScore = (double)(g.TargetScore ?? 0),
-                        Description = g.GoalDescription
-                    })
-                    .FirstOrDefaultAsync();
-
+                //  Tạo đối tượng báo cáo
                 var report = new EnhancedLearningReportDto
                 {
                     UserId = userId,
@@ -286,11 +176,6 @@ namespace Synapse_API.Repositories
                     TopicName = topicName,
                     Month = month,
                     Year = year,
-                    Goal = goal ?? new GoalDto
-                    {
-                        TargetScore = 0,
-                        Description = "No goal set"
-                    },
                     Performance = new PerformanceDto
                     {
                         AverageScore = avgScore,

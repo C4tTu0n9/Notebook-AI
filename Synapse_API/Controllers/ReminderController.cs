@@ -48,7 +48,7 @@ namespace Synapse_API.Controllers
                 }
                 else    //trước sự kiện bao nhiêu phút
                 {
-                    success = await _reminderService.CreateReminderAsync(eventId, request.MinutesBefore ?? 15);
+                    success = await _reminderService.CreateReminderAsync(eventId, request.MinutesBefore);
                 }
 
                 if (success)

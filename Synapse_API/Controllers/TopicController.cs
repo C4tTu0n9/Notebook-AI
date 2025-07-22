@@ -5,7 +5,8 @@ using Synapse_API.Models.Dto.TopicDTOs;
 using Synapse_API.Services.AmazonServices;
 using Microsoft.AspNetCore.Authorization;
 using Synapse_API.Services.DocumentServices.Interfaces;
-
+using Microsoft.Extensions.Options;
+using Synapse_API.Configuration_Services;
 namespace Synapse_API.Controllers
 {
     [Route("api/[controller]")]
@@ -16,13 +17,19 @@ namespace Synapse_API.Controllers
         private readonly UserService _userService;
         private readonly MyS3Service _myS3Service;
         private readonly IDocumentProcessingService _documentProcessingService;
+        private readonly IOptions<ApplicationSettings> _appSettings;    
 
-        public TopicController(TopicService topicService, UserService userService, MyS3Service myS3Service, IDocumentProcessingService documentProcessingService)
+        public TopicController(TopicService topicService, 
+        UserService userService, 
+        MyS3Service myS3Service, 
+        IDocumentProcessingService documentProcessingService, 
+        IOptions<ApplicationSettings> appSettings)
         {
             _topicService = topicService;
             _userService = userService;
             _myS3Service = myS3Service;
             _documentProcessingService = documentProcessingService;
+            _appSettings = appSettings;
         }
 
         [HttpGet()]
@@ -49,11 +56,11 @@ namespace Synapse_API.Controllers
             string fileUrl = string.Empty;
             if (topicRequest.DocumentFile != null)
             {
-                var allowedExtensions = new[] { ".pdf", ".doc", ".docx", ".txt" };
+                var allowedExtensions = _appSettings.Value.FileUpload.AllowedExtensions;
                 var ext = Path.GetExtension(topicRequest.DocumentFile.FileName).ToLower();
 
                 if (!allowedExtensions.Contains(ext))
-                    return BadRequest("Invalid file type. Only PDF, DOC, DOCX, and TXT are allowed.");
+                    return BadRequest("Invalid file type. Only PDF, TXT are allowed.");
 
                 // Lưu file lên S3
                 var myEmail = _userService.GetMyEmail(User);
@@ -98,11 +105,11 @@ namespace Synapse_API.Controllers
             string fileUrl = string.Empty;
             if (topicRequest.DocumentFile != null)
             {
-                var allowedExtensions = new[] { ".pdf", ".doc", ".docx", ".txt" };
+                var allowedExtensions = _appSettings.Value.FileUpload.AllowedExtensions;
                 var ext = Path.GetExtension(topicRequest.DocumentFile.FileName).ToLower();
 
                 if (!allowedExtensions.Contains(ext))
-                    return BadRequest("Invalid file type. Only PDF, DOC, DOCX, and TXT are allowed.");
+                return BadRequest($"Invalid file type. Allowed: {string.Join(", ", allowedExtensions)}");
 
                 // Lưu file lên S3
                 var myEmail = _userService.GetMyEmail(User);

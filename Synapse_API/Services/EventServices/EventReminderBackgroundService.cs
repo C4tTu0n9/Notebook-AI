@@ -1,4 +1,6 @@
 using Synapse_API.Services.EventServices;
+using Microsoft.Extensions.Options;
+using Synapse_API.Configuration_Services;
 
 namespace Synapse_API.Services.EventServices
 {
@@ -10,17 +12,16 @@ namespace Synapse_API.Services.EventServices
 
         public EventReminderBackgroundService(
             IServiceProvider serviceProvider,
-            ILogger<EventReminderBackgroundService> logger)
+            ILogger<EventReminderBackgroundService> logger,
+            IOptions<ApplicationSettings> appSettings)
         {
             _serviceProvider = serviceProvider;
             _logger = logger;
-            _checkInterval = TimeSpan.FromMinutes(1); // Kiểm tra mỗi 1 phút
+            _checkInterval = TimeSpan.FromMinutes(appSettings.Value.BackgroundJob.ReminderCheckIntervalMinutes);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Event Reminder Background Service đã khởi động");
-
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
@@ -29,7 +30,7 @@ namespace Synapse_API.Services.EventServices
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Lỗi trong Event Reminder Background Service");
+                    _logger.LogError(ex, "Lỗi Event Reminder Background Service");
                 }
 
                 // Chờ interval trước khi check tiếp
@@ -56,7 +57,6 @@ namespace Synapse_API.Services.EventServices
 
         public override async Task StopAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Event Reminder Background Service đang dừng...");
             await base.StopAsync(stoppingToken);
         }
     }

@@ -159,7 +159,7 @@ namespace Synapse_API.Repositories
             var user = await _context.Users.FirstOrDefaultAsync(u => u.UserID == userId);
             if (user == null) return false;
 
-
+            // So sánh CurrentPassword = Password
             if (!PasswordHelper.VerifyPassword(dto.CurrentPassword, user.PasswordHash))
                 return false;
 

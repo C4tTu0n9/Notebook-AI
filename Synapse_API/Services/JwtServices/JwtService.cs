@@ -29,7 +29,7 @@ namespace Synapse_API.Services.JwtServices
                 issuer: _config["Jwt:Issuer"],
                 audience: _config["Jwt:Audience"],
                 claims: claims,
-                expires: DateTime.Now.AddHours(1),   //1h
+                expires: DateTime.Now.AddHours(int.Parse(_config["Jwt:JwtExpiryHours"])),
                 signingCredentials: creds);
 
             return new JwtSecurityTokenHandler().WriteToken(token);

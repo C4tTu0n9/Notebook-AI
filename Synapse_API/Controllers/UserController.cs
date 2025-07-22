@@ -62,8 +62,7 @@ namespace Synapse_API.Controllers
             if (string.IsNullOrEmpty(userIdStr))
                 return Unauthorized("User ID missing from token.");
 
-            if (!int.TryParse(userIdStr, out int userId))
-                return BadRequest("Invalid User ID");
+            int userId = int.Parse(userIdStr);
 
             var success = await _userService.UpdateUserProfileAsync(userId, dto);
             if (!success)
@@ -80,8 +79,7 @@ namespace Synapse_API.Controllers
             if (string.IsNullOrEmpty(userIdStr))
                 return Unauthorized("User ID missing from token.");
 
-            if (!int.TryParse(userIdStr, out int userId))
-                return BadRequest("Invalid User ID");
+            int userId = int.Parse(userIdStr);
 
             var success = await _userService.ChangePasswordAsync(userId, dto);
             if(success == true)

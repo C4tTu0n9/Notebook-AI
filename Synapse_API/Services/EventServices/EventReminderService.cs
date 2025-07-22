@@ -4,6 +4,8 @@ using Synapse_API.Models.Entities;
 using Synapse_API.Repositories;
 using Synapse_API.Repositories.Event;
 using Synapse_API.Services.AmazonServices;
+using Microsoft.Extensions.Options;
+using Synapse_API.Configuration_Services;
 
 namespace Synapse_API.Services.EventServices
 {
@@ -12,14 +14,18 @@ namespace Synapse_API.Services.EventServices
         private readonly EmailService _emailService;
         private readonly EventRepository _eventRepository;
         private readonly ReminderRepository _reminderRepository;
+        private readonly IOptions<ApplicationSettings> _appSettings;
+        
         public EventReminderService(
             EmailService emailService,
             EventRepository eventRepository,
-            ReminderRepository reminderRepository)
+            ReminderRepository reminderRepository,
+            IOptions<ApplicationSettings> appSettings)
         {
             _emailService = emailService;
             _eventRepository = eventRepository;
             _reminderRepository = reminderRepository;
+            _appSettings = appSettings;
         }
 
         /// <summary>
@@ -75,7 +81,7 @@ namespace Synapse_API.Services.EventServices
         /// </summary>
         public async Task CreateDefaultRemindersAsync(int eventId, List<int> reminderMinutesBefore = null)
         {
-            reminderMinutesBefore ??= new List<int> { 15, 60 }; // Mặc định nhắc trước 15 phút và 1 giờ
+            reminderMinutesBefore ??= _appSettings.Value.Reminder.DefaultValuesMinutesBefore.ToList();
 
             var eventItem = await _eventRepository.GetEventById(eventId);
             if (eventItem == null) return;
@@ -139,12 +145,12 @@ namespace Synapse_API.Services.EventServices
 
 
         // Event Reminder Management Methods
-        public async Task<bool> CreateReminderAsync(int eventId, int minutesBefore)
+        public async Task<bool> CreateReminderAsync(int eventId, int? minutesBefore)
         {
             var eventItem = await _eventRepository.GetEventById(eventId);
             if (eventItem == null) return false;
 
-            var reminderTime = eventItem.StartTime.AddMinutes(-minutesBefore);
+            var reminderTime = eventItem.StartTime.AddMinutes((double)-minutesBefore);
             await CreateCustomReminderAsync(eventId, reminderTime);
             return true;
         }

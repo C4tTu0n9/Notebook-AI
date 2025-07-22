@@ -308,9 +308,6 @@ namespace Synapse_API.Services
         {
             var user = await _userRepository.GetUserWithProfileAsync(userId);
 
-            if (user == null)
-                return null;
-
             return new UserProfileDto
             {
                 UserID = user.UserID,

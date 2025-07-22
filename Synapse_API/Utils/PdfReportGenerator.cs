@@ -57,15 +57,7 @@ namespace Synapse_API.Utils
                                         innerCol.Item().Text($" Topic: {report.TopicName}")
                                             .FontSize(14);
                                     });
-
-                                    row.RelativeItem().AlignRight().Column(innerCol =>
-                                    {
-                                        innerCol.Item().Text($"🎯 Target Score: {report.Goal.TargetScore}")
-                                            .FontSize(12);
-
-                                        innerCol.Item().Text($"📈 Average Score: {report.Performance.AverageScore}")
-                                            .FontSize(12);
-                                    });
+         
                                 });
 
                                 // Performance highlights
@@ -139,18 +131,6 @@ namespace Synapse_API.Utils
                                     }
                                 });
 
-                                // Goal section
-                                userCol.Item().PaddingTop(10).Background(Colors.Grey.Lighten4).Padding(10).Column(goalCol =>
-                                {
-                                    goalCol.Item().Text("🎯 Learning Goal").FontSize(14).Bold();
-                                    goalCol.Item().Text(report.Goal.Description);
-                                    goalCol.Item().PaddingTop(5).Row(row =>
-                                    {
-                                        row.RelativeItem().Text($"Current Progress: {CalculateProgress(report.Performance.AverageScore, report.Goal.TargetScore)}%");
-                                        row.RelativeItem().AlignRight().Text($"Target: {report.Goal.TargetScore}");
-                                    });
-                                });
-
                                 userCol.Item().PaddingTop(10).LineHorizontal(1).LineColor(Colors.Grey.Lighten1);
                             });
                         }
@@ -172,7 +152,7 @@ namespace Synapse_API.Utils
             {
                 var firstThreeAvg = ordered.Take(3).Average(a => a.Score);
                 var lastThreeAvg = ordered.TakeLast(3).Average(a => a.Score);
-                var improvement = ((lastThreeAvg - firstThreeAvg) / firstThreeAvg) * 100;
+                var improvement = ((lastThreeAvg - firstThreeAvg) / firstThreeAvg) * 10;
                 return improvement.ToString("0.0") + "%";
             }
             // Phương án 2: Nếu có 2-3 attempts → so sánh đầu-cuối đơn giản
@@ -180,7 +160,7 @@ namespace Synapse_API.Utils
             {
                 var firstScore = ordered.First().Score;
                 var lastScore = ordered.Last().Score;
-                var improvement = ((lastScore - firstScore) / firstScore) * 100;
+                var improvement = ((lastScore - firstScore) / firstScore) * 10;
                 return improvement.ToString("0.0") + "% (Tính theo đầu-cuối)";
             }
         }
